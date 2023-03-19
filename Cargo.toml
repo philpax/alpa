@@ -1,0 +1,28 @@
+[package]
+name = "alpa"
+description = "An Alpaca-powered knowledge tool"
+authors = ["Philpax"]
+license = "MIT"
+version = "0.4.3"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0.138", features = ["derive"] }
+toml = "0.7.3"
+figment = { version = "0.10", features = ["toml"] }
+directories = "5.0.0"
+mlua = { version = "0.8.2", features = ["lua54", "vendored"] }
+
+egui = "0.21.0"
+eframe = "0.21.3"
+glutin = "0.30.7"
+glow = "0.12.1"
+
+device_query = "1.1.1"
+anyhow = "1.0.58"
+
+fuzzy-matcher = "0.3.7"
+arboard = "3.2.0"
+open = "4.0.0"
