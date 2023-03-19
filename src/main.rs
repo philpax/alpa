@@ -5,11 +5,18 @@ use egui::{FontData, FontDefinitions, FontFamily, Pos2, Vec2};
 
 mod app;
 mod config;
+mod llama;
 mod search;
 mod util;
 
 fn main() {
     let config = config::get_config();
+
+    let mut model =
+        llama::Model::new(&config.model.path, config.model.context_token_length).unwrap();
+
+    let mut session = model.session().unwrap();
+    session.infer("What is 6*7?").unwrap();
 
     eframe::run_native(
         "alpa",

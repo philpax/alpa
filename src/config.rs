@@ -4,7 +4,19 @@ use figment::{
     Figment,
 };
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
+use std::{
+    fs::{self, File},
+    path::PathBuf,
+};
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct Config {
+    pub window: Window,
+    pub general: General,
+    pub style: Style,
+    pub model: Model,
+    pub inference: Inference,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Window {
@@ -51,11 +63,28 @@ pub struct Style {
     pub stroke_color: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct Config {
-    pub window: Window,
-    pub general: General,
-    pub style: Style,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Model {
+    pub path: PathBuf,
+    pub context_token_length: usize,
+}
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            path: "ggml-alpaca-7b-q4.bin".into(),
+            context_token_length: 512,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Inference {
+    pub thread_count: usize,
+}
+impl Default for Inference {
+    fn default() -> Self {
+        Self { thread_count: 8 }
+    }
 }
 
 fn project_dirs() -> ProjectDirs {

@@ -26,3 +26,6 @@ anyhow = "1.0.58"
 fuzzy-matcher = "0.3.7"
 arboard = "3.2.0"
 open = "4.0.0"
+
+llama-rs = { git = "https://github.com/setzer22/llama-rs.git" }
+rand = "0.8.5"
