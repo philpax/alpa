@@ -4,35 +4,26 @@ use figment::{
     Figment,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    fs::{self, File},
-    path::PathBuf,
-};
+use std::fs::{self, File};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Config {
     pub window: Window,
     pub general: General,
     pub style: Style,
-    pub model: Model,
-    pub inference: Inference,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Window {
     pub width: u32,
     pub height: u32,
-    pub x: u32,
-    pub y: u32,
 }
 
 impl Default for Window {
     fn default() -> Self {
         Self {
             width: 640,
-            height: 320,
-            x: 640,
-            y: 380,
+            height: 32,
         }
     }
 }
@@ -61,30 +52,6 @@ pub struct Style {
 
     pub text_color: Option<String>,
     pub stroke_color: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Model {
-    pub path: PathBuf,
-    pub context_token_length: usize,
-}
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            path: "ggml-alpaca-7b-q4.bin".into(),
-            context_token_length: 512,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Inference {
-    pub thread_count: usize,
-}
-impl Default for Inference {
-    fn default() -> Self {
-        Self { thread_count: 8 }
-    }
 }
 
 fn project_dirs() -> ProjectDirs {
@@ -118,25 +85,4 @@ pub fn get_config() -> Config {
     .expect("couldn't save config");
 
     config
-}
-
-pub fn get_scripts() -> Vec<String> {
-    let project_dir = project_dirs();
-    let lua_dir = project_dir.config_dir().join("lua");
-
-    if !lua_dir.exists() {
-        std::fs::create_dir(&lua_dir).expect("couldn't create lua dir");
-    }
-
-    let mut results: Vec<String> = Vec::new();
-    for file in std::fs::read_dir(lua_dir).unwrap() {
-        let file = file.unwrap();
-        let file = file.path();
-        if file.extension().unwrap() == "lua" {
-            let script = std::fs::read_to_string(file).unwrap();
-            results.push(script);
-        }
-    }
-
-    results
 }
