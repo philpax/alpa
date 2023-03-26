@@ -11,11 +11,6 @@ jobs:
         with:
           submodules: recursive
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -35,11 +30,6 @@ jobs:
         with:
           submodules: recursive
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
