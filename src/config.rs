@@ -1,15 +1,15 @@
 use directories::ProjectDirs;
-use figment::{
-    providers::{Format, Serialized, Toml},
-    Figment,
-};
+use mlua::LuaSerdeExt;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Config {
+    #[serde(default)]
     pub window: Window,
+    #[serde(default)]
     pub general: General,
+    #[serde(default)]
     pub style: Style,
 }
 
@@ -58,31 +58,23 @@ fn project_dirs() -> ProjectDirs {
     ProjectDirs::from("org", "philpax", "alpa").expect("couldn't get project dir")
 }
 
-pub fn get_config() -> Config {
-    // make dir
+pub fn get(lua: &mlua::Lua) -> anyhow::Result<Config> {
     let project_dir = project_dirs();
     let config_dir = project_dir.config_dir();
 
     fs::create_dir_all(config_dir).expect("couldn't create config dir");
 
-    // create file if it doesn't exist
-    let config_path = config_dir.join("config.toml");
+    let config_path = config_dir.join("config.lua");
     if !config_path.exists() {
         File::create(&config_path).expect("couldn't create config");
     }
 
     // read config
-    let config: Config = Figment::from(Serialized::defaults(Config::default()))
-        .merge(Toml::file(&config_path))
-        .extract()
-        .expect("couldn't load config");
+    let config: Config = lua.from_value(
+        lua.load(&std::fs::read_to_string(&config_path)?)
+            .set_name(config_path.to_string_lossy())?
+            .eval()?,
+    )?;
 
-    // write config
-    fs::write(
-        &config_path,
-        toml::to_string(&config).expect("couldn't save config"),
-    )
-    .expect("couldn't save config");
-
-    config
+    Ok(config)
 }

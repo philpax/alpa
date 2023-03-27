@@ -7,8 +7,9 @@ mod app;
 mod config;
 mod util;
 
-fn main() {
-    let config = config::get_config();
+fn main() -> anyhow::Result<()> {
+    let lua = mlua::Lua::new();
+    let config = config::get(&lua)?;
 
     eframe::run_native(
         "alpa",
@@ -89,4 +90,6 @@ fn main() {
         }),
     )
     .unwrap();
+
+    Ok(())
 }
