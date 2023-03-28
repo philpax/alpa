@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, fs, path::PathBuf, rc::Rc, str::FromStr};
+use std::{collections::HashSet, fs, path::PathBuf, str::FromStr};
 
 use anyhow::Context;
 use config::Config;
@@ -15,27 +15,18 @@ mod util;
 fn main() -> anyhow::Result<()> {
     let lua = mlua::Lua::new();
 
-    let hotkeys_to_listen_for = Rc::new(RefCell::new(HashSet::new()));
+    let config = lua.create_table()?;
+    lua.globals().set("config", config)?;
+
     let internal = lua.create_table()?;
-    internal.set(
-        "listen_for_hotkeys",
-        lua.create_function({
-            let hotkeys_to_listen_for = hotkeys_to_listen_for.clone();
-            move |_, (hotkeys,): (Vec<String>,)| {
-                let hotkeys = hotkeys
-                    .iter()
-                    .map(|hk| device_query::Keycode::from_str(hk))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(mlua::Error::external)?;
-
-                hotkeys_to_listen_for.borrow_mut().insert(hotkeys);
-                Ok(())
-            }
-        })?,
-    )?;
-
     lua.globals().set("internal", internal)?;
 
+    // Run the prelude.
+    lua.load(include_str!("prelude.lua"))
+        .set_name("prelude")?
+        .eval()?;
+
+    // Run the config.
     let config_dir = config_dir();
     fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
 
@@ -44,17 +35,20 @@ fn main() -> anyhow::Result<()> {
         std::fs::File::create(&config_path).context("couldn't create config")?;
     }
 
-    lua.load(include_str!("prelude.lua"))
-        .set_name("prelude")?
-        .eval()?;
+    lua.load(&std::fs::read_to_string(&config_path)?)
+        .set_name(config_path.to_string_lossy())?
+        .eval::<()>()?;
 
-    let config: Config = lua.from_value(
-        lua.load(&std::fs::read_to_string(&config_path)?)
-            .set_name(config_path.to_string_lossy())?
-            .eval()?,
+    let config_table: mlua::Table = lua.globals().get("config")?;
+
+    let hotkeys_to_listen_for = find_registered_hotkeys(vec![], config_table.get("hotkeys")?)?
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+    let config: Config = lua.from_value_with(
+        mlua::Value::Table(config_table),
+        mlua::DeserializeOptions::new().deny_unsupported_types(false),
     )?;
-
-    let hotkeys_to_listen_for = hotkeys_to_listen_for.borrow().clone();
 
     eframe::run_native(
         "alpa",
@@ -142,6 +136,31 @@ fn main() -> anyhow::Result<()> {
     .unwrap();
 
     Ok(())
+}
+
+fn find_registered_hotkeys(
+    prefix: Vec<Keycode>,
+    table: mlua::Table,
+) -> anyhow::Result<Vec<Vec<Keycode>>> {
+    let mut output = vec![];
+    for kv_result in table.pairs::<String, mlua::Value>().into_iter() {
+        let (k, v) = kv_result?;
+
+        let mut prefix = prefix.clone();
+        prefix.push(
+            Keycode::from_str(&k)
+                .map_err(|e| anyhow::anyhow!("failed to parse keycode {k} ({e})"))?,
+        );
+        match v {
+            mlua::Value::Table(v) => {
+                output.append(&mut find_registered_hotkeys(prefix, v)?);
+            }
+            mlua::Value::Function(_) => output.push(prefix),
+            _ => anyhow::bail!("unexpected type for {v:?} at {k}"),
+        }
+    }
+
+    Ok(output)
 }
 
 pub struct AppChannels {

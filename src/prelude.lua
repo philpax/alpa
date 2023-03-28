@@ -1,22 +1,19 @@
-local handlers = {}
-
-local keycodes_to_table_key = function(keycodes)
-    return table.concat(keycodes, "+")
-end
-
 internal.dispatch = function(keycodes)
-    local keycodes = keycodes_to_table_key(keycodes)
-    for _, handler in ipairs(handlers[keycodes] or {}) do
+    local t = config.hotkeys
+    for _, v in keycodes do
+        t = t[v]
+    end
+
+    local handlers = {}
+    if type(t) == "table" then
+        handlers = t
+    elseif type(t) == "function" then
+        handlers = {t}
+    else
+        error("unexpected type when handling keycodes")
+    end
+
+    for _, handler in ipairs(handlers) do
         handler()
     end
-end
-
-on_keys = function(keycodes, f)
-    internal.listen_for_hotkeys(keycodes)
-
-    local keycodes = keycodes_to_table_key(keycodes)
-    if handlers[keycodes] == nil then
-        handlers[keycodes] = {}
-    end
-    table.insert(handlers[keycodes], f)
 end
