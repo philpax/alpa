@@ -1,15 +1,60 @@
-use std::fs;
+use std::{cell::RefCell, collections::HashSet, fs, path::PathBuf, rc::Rc, str::FromStr};
 
+use anyhow::Context;
+use config::Config;
+use device_query::Keycode;
+use directories::ProjectDirs;
 use eframe::egui;
-use egui::{FontData, FontDefinitions, FontFamily, Pos2, Vec2};
+use egui::{FontData, FontDefinitions, FontFamily, Key, Pos2, Vec2};
+use mlua::LuaSerdeExt;
+use std::sync;
 
-mod app;
 mod config;
 mod util;
 
 fn main() -> anyhow::Result<()> {
     let lua = mlua::Lua::new();
-    let config = config::get(&lua)?;
+
+    let hotkeys_to_listen_for = Rc::new(RefCell::new(HashSet::new()));
+    let internal = lua.create_table()?;
+    internal.set(
+        "listen_for_hotkeys",
+        lua.create_function({
+            let hotkeys_to_listen_for = hotkeys_to_listen_for.clone();
+            move |_, (hotkeys,): (Vec<String>,)| {
+                let hotkeys = hotkeys
+                    .iter()
+                    .map(|hk| device_query::Keycode::from_str(hk))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(mlua::Error::external)?;
+
+                hotkeys_to_listen_for.borrow_mut().insert(hotkeys);
+                Ok(())
+            }
+        })?,
+    )?;
+
+    lua.globals().set("internal", internal)?;
+
+    let config_dir = config_dir();
+    fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
+
+    let config_path = config_dir.join("config.lua");
+    if !config_path.exists() {
+        std::fs::File::create(&config_path).context("couldn't create config")?;
+    }
+
+    lua.load(include_str!("prelude.lua"))
+        .set_name("prelude")?
+        .eval()?;
+
+    let config: Config = lua.from_value(
+        lua.load(&std::fs::read_to_string(&config_path)?)
+            .set_name(config_path.to_string_lossy())?
+            .eval()?,
+    )?;
+
+    let hotkeys_to_listen_for = hotkeys_to_listen_for.borrow().clone();
 
     eframe::run_native(
         "alpa",
@@ -86,10 +131,172 @@ fn main() -> anyhow::Result<()> {
                 cc.egui_ctx.set_fonts(fonts);
             }
 
-            Box::new(app::App::new(cc.egui_ctx.clone(), config))
+            Box::new(App::new(
+                cc.egui_ctx.clone(),
+                config,
+                lua,
+                hotkeys_to_listen_for,
+            ))
         }),
     )
     .unwrap();
 
     Ok(())
+}
+
+pub struct AppChannels {
+    hotkeys_rx: sync::mpsc::Receiver<Vec<Keycode>>,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+struct Opened {
+    pos: egui::Pos2,
+    input: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum AppState {
+    First,
+    Unopened,
+    Opened(Opened),
+}
+
+pub struct App {
+    state: AppState,
+    app_channels: AppChannels,
+    request_focus: bool,
+    lua: mlua::Lua,
+
+    _hotkey_thread: std::thread::JoinHandle<()>,
+    _config: Config,
+}
+
+impl App {
+    pub fn new(
+        ctx: egui::Context,
+        config: Config,
+        lua: mlua::Lua,
+        hotkeys_to_listen_for: HashSet<Vec<Keycode>>,
+    ) -> Self {
+        let (events_tx, hotkeys_rx) = sync::mpsc::channel();
+        let hotkey_thread = std::thread::spawn(move || {
+            let device_state = device_query::DeviceState::new();
+
+            let mut old_keycodes = HashSet::new();
+            loop {
+                let new_keycodes: HashSet<_> = hotkeys_to_listen_for
+                    .iter()
+                    .filter(|kcs| crate::util::is_hotkey_pressed(&device_state, kcs))
+                    .cloned()
+                    .collect();
+
+                for keycodes in new_keycodes.difference(&old_keycodes) {
+                    events_tx.send(keycodes.clone()).unwrap();
+                    ctx.request_repaint();
+                }
+
+                old_keycodes = new_keycodes;
+
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+
+        Self {
+            state: AppState::First,
+            app_channels: AppChannels { hotkeys_rx },
+            request_focus: false,
+            lua,
+
+            _hotkey_thread: hotkey_thread,
+            _config: config,
+        }
+    }
+
+    fn get_new_state(&mut self, ctx: &egui::Context) -> anyhow::Result<AppState> {
+        match self.state.clone() {
+            AppState::First => Ok(AppState::Unopened),
+            AppState::Unopened => Ok(AppState::Unopened),
+            AppState::Opened(opened) => self.process_opened(opened, ctx),
+        }
+    }
+
+    fn process_opened(&mut self, opened: Opened, ctx: &egui::Context) -> anyhow::Result<AppState> {
+        if ctx.input(|r| r.key_released(Key::Escape)) {
+            return Ok(AppState::Unopened);
+        }
+
+        egui::CentralPanel::default()
+            .show(ctx, |ui| self.draw_opened_central(ui, opened))
+            .inner
+    }
+
+    fn draw_opened_central(
+        &mut self,
+        ui: &mut egui::Ui,
+        mut opened: Opened,
+    ) -> anyhow::Result<AppState> {
+        let input_widget = egui::TextEdit::singleline(&mut opened.input).lock_focus(true);
+        let input_res = ui.add_sized(ui.available_size(), input_widget);
+        if self.request_focus {
+            input_res.request_focus();
+            self.request_focus = false;
+        }
+
+        if input_res.lost_focus() {
+            println!("{:?}", opened.input);
+            Ok(AppState::Unopened)
+        } else {
+            Ok(AppState::Opened(opened))
+        }
+    }
+
+    fn set_state(&mut self, state: AppState, frame: &mut eframe::Frame) {
+        if self.state != state {
+            match &state {
+                AppState::First => {}
+                AppState::Unopened => {
+                    frame.set_visible(false);
+                }
+                AppState::Opened(opened) => {
+                    frame.set_window_pos(opened.pos);
+                    frame.set_visible(true);
+                    self.request_focus = true;
+                }
+            }
+        }
+        self.state = state;
+    }
+}
+
+impl eframe::App for App {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {}
+
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let events: Vec<_> = self.app_channels.hotkeys_rx.try_iter().collect();
+        for event in events {
+            let () = self
+                .lua
+                .globals()
+                .get::<_, mlua::Table>("internal")
+                .unwrap()
+                .get::<_, mlua::Function>("dispatch")
+                .unwrap()
+                .call((event
+                    .into_iter()
+                    .map(|k| k.to_string())
+                    .collect::<Vec<String>>(),))
+                .unwrap();
+        }
+
+        let state = self.get_new_state(ctx);
+        self.set_state(state.unwrap(), frame);
+    }
+}
+
+fn project_dirs() -> ProjectDirs {
+    ProjectDirs::from("org", "philpax", "alpa").expect("couldn't get project dir")
+}
+
+fn config_dir() -> PathBuf {
+    project_dirs().config_dir().to_owned()
 }
