@@ -13,8 +13,12 @@ directories = "5.0.0"
 mlua = {version = "0.8.2", features = ["luau", "serialize"]}
 serde = {version = "1.0", features = ["derive"]}
 
-eframe = "0.21.3"
 egui = "0.21.0"
+epi = "0.17.0"
+egui_winit_platform = "0.18.0"
+egui_wgpu_backend = "0.22.0"
+wgpu = "0.15.1"
+winit = "0.28.3"
 
 anyhow = "1.0.58"
 device_query = "1.1.1"
@@ -23,3 +27,4 @@ arboard = "3.2.0"
 
 llama-rs = {git = "https://github.com/setzer22/llama-rs.git"}
 rand = "0.8.5"
+tokio = { version = "1.27.0", features = ["full"] }
