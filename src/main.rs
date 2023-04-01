@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
 
     let config_path = config_dir.join("config.lua");
     if !config_path.exists() {
-        std::fs::File::create(&config_path).context("couldn't create config")?;
+        std::fs::write(&config_path, include_str!("../resources/config.lua"))?;
     }
 
     lua.load(&std::fs::read_to_string(&config_path)?)
