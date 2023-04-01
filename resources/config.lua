@@ -3,8 +3,8 @@ config.window = {
     height = 32,
 }
 config.hotkeys = {
-    ["LAlt"] = {
-        ["Backspace"] = function()
+    ["LControl"] = {
+        ["Escape"] = function()
             print("hello")
         end
     }
