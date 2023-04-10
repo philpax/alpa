@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf, str::FromStr};
+use std::{cell::RefCell, collections::HashSet, path::PathBuf, rc::Rc, str::FromStr};
 
 use anyhow::Context;
 use config::Config;
@@ -17,11 +17,26 @@ mod util;
 async fn main() -> anyhow::Result<()> {
     let lua = mlua::Lua::new();
 
+    let singleline_callback = Rc::new(RefCell::new(None));
+
     let config = lua.create_table()?;
     lua.globals().set("config", config)?;
 
     let internal = lua.create_table()?;
     lua.globals().set("internal", internal)?;
+
+    let ui = lua.create_table()?;
+    ui.set(
+        "singleline",
+        lua.create_function({
+            let singleline_callback = singleline_callback.clone();
+            move |lua, func: mlua::Function| {
+                *singleline_callback.borrow_mut() = Some(lua.create_registry_value(func)?);
+                Ok(())
+            }
+        })?,
+    )?;
+    lua.globals().set("ui", ui)?;
 
     // Run the prelude.
     lua.load(include_str!("prelude.lua"))
@@ -41,14 +56,14 @@ async fn main() -> anyhow::Result<()> {
         .set_name(config_path.to_string_lossy())?
         .eval::<()>()?;
 
-    let config_table: mlua::Table = lua.globals().get("config")?;
+    let config: mlua::Table = lua.globals().get("config")?;
 
-    let hotkeys_to_listen_for = find_registered_hotkeys(vec![], config_table.get("hotkeys")?)?
+    let hotkeys_to_listen_for = find_registered_hotkeys(vec![], config.get("hotkeys")?)?
         .into_iter()
         .collect::<HashSet<_>>();
 
     let config: Config = lua.from_value_with(
-        mlua::Value::Table(config_table),
+        mlua::Value::Table(config),
         mlua::DeserializeOptions::new().deny_unsupported_types(false),
     )?;
 
@@ -57,9 +72,10 @@ async fn main() -> anyhow::Result<()> {
 
         #[cfg(target_os = "macos")]
         {
-            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
             builder
                 .with_default_menu(false)
+                .with_activation_policy(ActivationPolicy::Accessory)
                 .with_activate_ignoring_other_apps(false);
         }
 
@@ -74,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
         .with_visible(false)
         .with_active(false)
         .with_window_level(winit::window::WindowLevel::AlwaysOnTop)
-        .with_inner_size(winit::dpi::PhysicalSize {
+        .with_inner_size(winit::dpi::LogicalSize {
             width: config.window.width,
             height: config.window.height,
         })
@@ -88,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
 
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
+            power_preference: wgpu::PowerPreference::LowPower,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
         })
@@ -137,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
 
     set_style(&platform.context(), &config)?;
 
-    let (events_tx, hotkeys_rx) = std::sync::mpsc::channel();
+    let (events_tx, events_rx) = std::sync::mpsc::channel();
     let _hotkey_thread = std::thread::spawn({
         let ctx = platform.context();
         move || {
@@ -176,7 +192,9 @@ async fn main() -> anyhow::Result<()> {
             Event::RedrawRequested(..) => {
                 platform.update_time(start_time.elapsed().as_secs_f64());
 
-                let events: Vec<_> = hotkeys_rx.try_iter().collect();
+                let singleline_callback_was_set = singleline_callback.borrow().is_some();
+
+                let events: Vec<_> = events_rx.try_iter().collect();
                 for event in events {
                     let () = lua
                         .globals()
@@ -189,6 +207,18 @@ async fn main() -> anyhow::Result<()> {
                             .map(|k| k.to_string())
                             .collect::<Vec<String>>(),))
                         .unwrap();
+                }
+
+                let request_focus = {
+                    let singleline_callback_set = singleline_callback.borrow().is_some();
+                    window.set_visible(singleline_callback_set);
+
+                    singleline_callback_was_set != singleline_callback_set
+                        && singleline_callback_set
+                };
+
+                if request_focus {
+                    window.focus_window();
                 }
 
                 let output_frame = match surface.get_current_texture() {
@@ -211,8 +241,44 @@ async fn main() -> anyhow::Result<()> {
                 // Begin to draw the UI frame.
                 platform.begin_frame();
 
-                // Draw the demo application.
-                draw_ctx(&platform.context(), &mut input);
+                {
+                    let mut singleline_callback = singleline_callback.borrow_mut();
+                    if singleline_callback.is_some() {
+                        egui::CentralPanel::default().show(&platform.context(), |ui| {
+                            let input_widget =
+                                egui::TextEdit::singleline(&mut input).lock_focus(true);
+                            let input_res = ui.add_sized(ui.available_size(), input_widget);
+
+                            if request_focus {
+                                input_res.request_focus();
+                            }
+
+                            ui.input(|i| {
+                                if i.key_released(egui::Key::Escape) {
+                                    *singleline_callback = None;
+                                }
+
+                                if i.key_released(egui::Key::Enter) {
+                                    input_res.surrender_focus();
+                                }
+                            });
+
+                            if input_res.lost_focus() && !input.is_empty() {
+                                let callback_key = singleline_callback.take().unwrap();
+                                if let Ok(func) =
+                                    lua.registry_value::<mlua::Function>(&callback_key)
+                                {
+                                    let () = func.call((input.clone(),)).unwrap();
+                                }
+                                lua.remove_registry_value(callback_key).ok();
+                            }
+                        });
+
+                        if singleline_callback.is_none() {
+                            input.clear();
+                        }
+                    }
+                }
 
                 // End the UI frame. We could now handle the output and draw the UI with the backend.
                 let full_output = platform.end_frame(Some(&window));
@@ -279,8 +345,8 @@ enum WinitEvent {
     RequestRedraw,
 }
 
-struct EguiRepaintSinal(std::sync::Mutex<winit::event_loop::EventLoopProxy<WinitEvent>>);
-impl epi::backend::RepaintSignal for EguiRepaintSinal {
+struct EguiRepaintSignal(std::sync::Mutex<winit::event_loop::EventLoopProxy<WinitEvent>>);
+impl epi::backend::RepaintSignal for EguiRepaintSignal {
     fn request_repaint(&self) {
         self.0
             .lock()
@@ -352,19 +418,6 @@ fn set_style(ctx: &egui::Context, config: &Config) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn draw_ctx(ctx: &egui::Context, input: &mut String) {
-    egui::CentralPanel::default()
-        .show(ctx, |ui| {
-            let input_widget = egui::TextEdit::singleline(input).lock_focus(true);
-            let input_res = ui.add_sized(ui.available_size(), input_widget);
-
-            if input_res.lost_focus() {
-                println!("{:?}", *input);
-            }
-        })
-        .inner
 }
 
 fn find_registered_hotkeys(
