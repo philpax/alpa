@@ -1,10 +1,20 @@
-use crate::{config, util, WindowArgs};
+use crate::{config, util};
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 
-pub(super) async fn main(args: &WindowArgs) -> anyhow::Result<()> {
+#[derive(Serialize, Deserialize)]
+pub struct Args {
+    pub width: u32,
+    pub height: u32,
+    pub style: config::Style,
+}
+
+pub(super) async fn main(args: &str) -> anyhow::Result<()> {
     use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
     use egui_winit_platform::{Platform, PlatformDescriptor};
     use winit::{event::Event, event_loop::ControlFlow};
+
+    let args: Args = serde_json::from_str(args)?;
 
     let event_loop = {
         let mut builder = winit::event_loop::EventLoopBuilder::<WinitEvent>::with_user_event();
