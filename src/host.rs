@@ -1,12 +1,19 @@
-use crate::{config, util, WindowArgs};
+use crate::{config, util, window};
 use anyhow::Context;
 use device_query::Keycode;
-use std::{collections::HashSet, str::FromStr};
+use enigo::{Enigo, KeyboardControllable};
+use std::{
+    collections::HashSet,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 pub(super) async fn main() -> anyhow::Result<()> {
     use config::Config;
     use directories::ProjectDirs;
     use mlua::LuaSerdeExt;
+
+    let enigo = Arc::new(Mutex::new(Enigo::new()));
 
     let lua = mlua::Lua::new();
 
@@ -54,7 +61,7 @@ pub(super) async fn main() -> anyhow::Result<()> {
         lua.create_function(move |_lua, func: mlua::Function| {
             let output = std::process::Command::new(std::env::current_exe()?)
                 .arg(
-                    serde_json::to_string(&WindowArgs {
+                    serde_json::to_string(&window::Args {
                         width: config.window.width,
                         height: config.window.height,
                         style: config.style.clone(),
@@ -69,6 +76,20 @@ pub(super) async fn main() -> anyhow::Result<()> {
         })?,
     )?;
     lua.globals().set("ui", ui)?;
+
+    let input = lua.create_table()?;
+    input.set(
+        "key_sequence",
+        lua.create_function({
+            let enigo = enigo.clone();
+            move |_, sequence: String| {
+                let mut enigo = enigo.lock().unwrap();
+                enigo.key_sequence(&sequence);
+                Ok(())
+            }
+        })?,
+    )?;
+    lua.globals().set("input", input)?;
 
     let device_state = device_query::DeviceState::new();
     let mut old_keycodes = HashSet::new();

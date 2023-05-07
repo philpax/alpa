@@ -6,7 +6,7 @@ config.hotkeys = {
     ["LControl"] = {
         ["Escape"] = function()
             ui.singleline(function(prompt)
-                print(prompt)
+                input.key_sequence(prompt)
             end)
         end
     }
