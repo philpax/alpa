@@ -80,12 +80,12 @@ pub(super) async fn main() -> anyhow::Result<()> {
                         height: config.window.height,
                         style: config.style.clone(),
                     })
-                    .map_err(|e| mlua::Error::external(e))?,
+                    .map_err(mlua::Error::external)?,
                 )
                 .output()?;
 
-            let () = func
-                .call((String::from_utf8(output.stdout).map_err(|e| mlua::Error::external(e))?,))?;
+            func
+                .call((String::from_utf8(output.stdout).map_err(mlua::Error::external)?,))?;
             Ok(())
         })?,
     )?;
@@ -95,7 +95,7 @@ pub(super) async fn main() -> anyhow::Result<()> {
     input.set(
         "key_sequence",
         lua.create_function({
-            let enigo = enigo.clone();
+            let enigo = enigo;
             move |_, sequence: String| {
                 let mut enigo = enigo.lock().unwrap();
                 enigo.key_sequence(&sequence);
