@@ -55,6 +55,20 @@ pub(super) async fn main() -> anyhow::Result<()> {
         mlua::DeserializeOptions::new().deny_unsupported_types(false),
     )?;
 
+    let model = llm::load_dynamic(
+        config
+            .model
+            .architecture()
+            .expect("invalid model architecture specified in config"),
+        &config.model.path,
+        llm::ModelParameters {
+            prefer_mmap: config.model.prefer_mmap,
+            n_context_tokens: config.model.context_token_length,
+            ..Default::default()
+        },
+        llm::load_progress_callback_stdout,
+    )?;
+
     let ui = lua.create_table()?;
     ui.set(
         "singleline",
@@ -90,6 +104,29 @@ pub(super) async fn main() -> anyhow::Result<()> {
         })?,
     )?;
     lua.globals().set("input", input)?;
+
+    let llm = lua.create_table()?;
+    llm.set(
+        "infer",
+        lua.create_function(move |_, (prompt, callback): (String, mlua::Function)| {
+            let mut session = model.start_session(Default::default());
+            session
+                .infer(
+                    model.as_ref(),
+                    &prompt,
+                    &mut Default::default(),
+                    &mut rand::thread_rng(),
+                    |tok| {
+                        callback.call((tok.to_string(),))?;
+                        Ok::<_, mlua::Error>(())
+                    },
+                )
+                .map_err(|e| mlua::Error::external(e.to_string()))?;
+
+            Ok(())
+        })?,
+    )?;
+    lua.globals().set("llm", llm)?;
 
     let device_state = device_query::DeviceState::new();
     let mut old_keycodes = HashSet::new();

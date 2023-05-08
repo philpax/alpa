@@ -1,6 +1,6 @@
 internal.dispatch = function(keycodes)
     local t = config.hotkeys
-    for _, v in keycodes do
+    for _, v in ipairs(keycodes) do
         t = t[v]
     end
 
