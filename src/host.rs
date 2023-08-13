@@ -2,6 +2,7 @@ use crate::{config, util, window};
 use anyhow::Context;
 use device_query::Keycode;
 use enigo::{Enigo, KeyboardControllable};
+use llm::TokenizerSource;
 use std::{
     collections::HashSet,
     str::FromStr,
@@ -56,14 +57,14 @@ pub(super) async fn main() -> anyhow::Result<()> {
     )?;
 
     let model = llm::load_dynamic(
-        config
-            .model
-            .architecture()
-            .expect("invalid model architecture specified in config"),
+        Some(config.model.architecture()?),
+        // TODO: support others
         &config.model.path,
+        TokenizerSource::Embedded,
         llm::ModelParameters {
             prefer_mmap: config.model.prefer_mmap,
-            n_context_tokens: config.model.context_token_length,
+            context_size: config.model.context_token_length,
+            use_gpu: config.model.use_gpu,
             ..Default::default()
         },
         llm::load_progress_callback_stdout,
@@ -84,8 +85,7 @@ pub(super) async fn main() -> anyhow::Result<()> {
                 )
                 .output()?;
 
-            func
-                .call((String::from_utf8(output.stdout).map_err(mlua::Error::external)?,))?;
+            func.call((String::from_utf8(output.stdout).map_err(mlua::Error::external)?,))?;
             Ok(())
         })?,
     )?;
@@ -113,12 +113,23 @@ pub(super) async fn main() -> anyhow::Result<()> {
             session
                 .infer(
                     model.as_ref(),
-                    &prompt,
-                    &mut Default::default(),
                     &mut rand::thread_rng(),
+                    &llm::InferenceRequest {
+                        prompt: (&prompt).into(),
+                        // TODO: expose sampler
+                        parameters: &llm::InferenceParameters::default(),
+                        play_back_previous_tokens: false,
+                        maximum_token_count: None,
+                    },
+                    &mut Default::default(),
                     |tok| {
-                        callback.call((tok.to_string(),))?;
-                        Ok::<_, mlua::Error>(())
+                        match tok {
+                            llm::InferenceResponse::InferredToken(t) => {
+                                callback.call((t,))?;
+                            }
+                            _ => {}
+                        }
+                        Ok::<_, mlua::Error>(llm::InferenceFeedback::Continue)
                     },
                 )
                 .map_err(|e| mlua::Error::external(e.to_string()))?;

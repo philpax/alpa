@@ -38,10 +38,11 @@ pub struct Model {
     pub context_token_length: usize,
     pub architecture: String,
     pub prefer_mmap: bool,
+    pub use_gpu: bool,
 }
 impl Model {
-    pub fn architecture(&self) -> Option<llm::ModelArchitecture> {
-        self.architecture.parse().ok()
+    pub fn architecture(&self) -> anyhow::Result<llm::ModelArchitecture> {
+        Ok(self.architecture.parse()?)
     }
 }
 impl Default for Model {
@@ -51,6 +52,7 @@ impl Default for Model {
             context_token_length: 2048,
             architecture: llm::ModelArchitecture::Llama.to_string(),
             prefer_mmap: true,
+            use_gpu: true,
         }
     }
 }
