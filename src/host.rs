@@ -57,6 +57,9 @@ pub(super) fn main() -> anyhow::Result<()> {
         for keycodes in new_keycodes.difference(&old_keycodes) {
             if keycodes == &vec![Keycode::LControl, Keycode::Escape] {
                 let prompt = ask_for_singleline_input(&config)?;
+                if prompt.is_empty() {
+                    continue;
+                }
 
                 infer(model.as_ref(), &prompt, |output| {
                     enigo.lock().unwrap().key_sequence(&output);
