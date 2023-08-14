@@ -1,4 +1,3 @@
-use crate::{config, util};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +5,6 @@ use serde::{Deserialize, Serialize};
 pub struct Args {
     pub width: u32,
     pub height: u32,
-    pub style: config::Style,
 }
 
 pub(super) async fn main(args: &str) -> anyhow::Result<()> {
@@ -88,13 +86,11 @@ pub(super) async fn main(args: &str) -> anyhow::Result<()> {
     surface.configure(&device, &surface_config);
 
     // We use the egui_winit_platform crate as the platform.
-    let (font_definitions, style) = get_style(&args.style)?;
     let mut platform = Platform::new(PlatformDescriptor {
         physical_width: args.width,
         physical_height: args.height,
         scale_factor: window.scale_factor(),
-        font_definitions,
-        style,
+        ..Default::default()
     });
 
     // We use the egui_wgpu_backend crate as the render backend.
@@ -223,70 +219,4 @@ impl epi::backend::RepaintSignal for EguiRepaintSignal {
             .send_event(WinitEvent::RequestRedraw)
             .ok();
     }
-}
-
-fn get_style(style: &config::Style) -> anyhow::Result<(egui::FontDefinitions, egui::Style)> {
-    use egui::{FontData, FontDefinitions, FontFamily};
-    let mut visuals = egui::Visuals::dark();
-
-    // colors
-    if let Some(bg_color) = &style.bg_color {
-        let bg_color = util::hex_to_color32(bg_color);
-        visuals.widgets.noninteractive.bg_fill = bg_color;
-    }
-
-    if let Some(input_bg_color) = &style.input_bg_color {
-        let input_bg_color = util::hex_to_color32(input_bg_color);
-        visuals.extreme_bg_color = input_bg_color;
-    }
-
-    if let Some(hovered_bg_color) = &style.hovered_bg_color {
-        let hovered_bg_color = util::hex_to_color32(hovered_bg_color);
-        visuals.widgets.hovered.bg_fill = hovered_bg_color;
-    }
-
-    if let Some(selected_bg_color) = &style.selected_bg_color {
-        let selected_bg_color = util::hex_to_color32(selected_bg_color);
-        visuals.widgets.active.bg_fill = selected_bg_color;
-    }
-
-    if let Some(text_color) = &style.text_color {
-        let text_color = util::hex_to_color32(text_color);
-        visuals.override_text_color = Some(text_color);
-    }
-
-    if let Some(stroke_color) = &style.stroke_color {
-        let stroke_color = util::hex_to_color32(stroke_color);
-        visuals.selection.stroke.color = stroke_color; // text input
-        visuals.widgets.hovered.bg_stroke.color = stroke_color; // hover
-        visuals.widgets.active.bg_stroke.color = stroke_color; // selection
-    }
-
-    // fonts
-    let mut fonts = FontDefinitions::default();
-    if let Some(font_path) = &style.font {
-        fonts.font_data.insert(
-            "custom_font".to_owned(),
-            FontData::from_owned(std::fs::read(font_path)?),
-        );
-
-        fonts
-            .families
-            .get_mut(&FontFamily::Proportional)
-            .context("no proportional font family")?
-            .insert(0, "custom_font".to_owned());
-        fonts
-            .families
-            .get_mut(&FontFamily::Monospace)
-            .context("no monospace font family")?
-            .push("custom_font".to_owned());
-    }
-
-    Ok((
-        fonts,
-        egui::Style {
-            visuals,
-            ..Default::default()
-        },
-    ))
 }

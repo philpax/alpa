@@ -1,6 +1,6 @@
-use crate::{config::Config, util, window};
+use crate::{config::Config, window};
 use anyhow::Context;
-use device_query::Keycode;
+use device_query::{DeviceQuery, DeviceState, Keycode};
 use directories::ProjectDirs;
 use enigo::{Enigo, KeyboardControllable};
 use std::{
@@ -50,13 +50,14 @@ pub(super) fn main() -> anyhow::Result<()> {
     loop {
         let new_keycodes: HashSet<_> = hotkeys_to_listen_for
             .iter()
-            .filter(|kcs| util::is_hotkey_pressed(&device_state, kcs))
+            .filter(|kcs| is_hotkey_pressed(&device_state, kcs))
             .cloned()
             .collect();
 
         for keycodes in new_keycodes.difference(&old_keycodes) {
             if keycodes == &vec![Keycode::LControl, Keycode::Escape] {
                 let prompt = ask_for_singleline_input(&config)?;
+
                 infer(model.as_ref(), &prompt, |output| {
                     enigo.lock().unwrap().key_sequence(&output);
                 })?;
@@ -72,7 +73,6 @@ fn ask_for_singleline_input(config: &Config) -> anyhow::Result<String> {
     let request = serde_json::to_string(&window::Args {
         width: config.window.width,
         height: config.window.height,
-        style: config.style.clone(),
     })?;
 
     let output = Command::new(env::current_exe()?).arg(request).output()?;
@@ -107,4 +107,9 @@ fn infer(
     )?;
 
     Ok(())
+}
+
+pub fn is_hotkey_pressed(device_state: &DeviceState, hotkey_str: &[Keycode]) -> bool {
+    HashSet::<Keycode>::from_iter(device_state.get_keys())
+        .is_superset(&HashSet::from_iter(hotkey_str.iter().copied()))
 }

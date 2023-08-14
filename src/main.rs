@@ -1,6 +1,5 @@
 mod config;
 mod host;
-mod util;
 mod window;
 
 #[tokio::main]
