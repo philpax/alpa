@@ -8,6 +8,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(args) = std::env::args().nth(1) {
         window::main(&args).await
     } else {
-        host::main().await
+        host::main()
     }
 }

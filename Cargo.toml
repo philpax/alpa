@@ -10,8 +10,8 @@ version = "0.1.0"
 
 [dependencies]
 directories = "5.0.0"
-mlua = { version = "0.8.8", features = ["lua54", "vendored", "serialize"] }
 serde = { version = "1.0", features = ["derive"] }
+toml = { version = "0.7" }
 
 egui = "0.21.0"
 epi = "0.17.0"
