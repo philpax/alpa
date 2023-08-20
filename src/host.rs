@@ -1,5 +1,5 @@
 use crate::{
-    command::{InputMethod, PromptMode},
+    command::{CommandType, InputMethod, PromptMode},
     config::{self, Config},
     keycode::Keycode,
     window,
@@ -37,11 +37,14 @@ pub(super) fn main() -> anyhow::Result<()> {
 
     let (command_tx, command_rx) = flume::bounded(1);
     let is_generating = Arc::new(AtomicBool::new(false));
+    let cancel_immediately = Arc::new(AtomicBool::new(false));
 
     let _input_thread = std::thread::spawn({
         let is_generating = is_generating.clone();
+        let cancel_immediately = cancel_immediately.clone();
         move || {
             let device_state = device_query::DeviceState::new();
+            // Use to prevent the same command being sent multiple times during a generation attempt
             let mut last_pressed = None;
             loop {
                 let new_keycodes =
@@ -52,9 +55,21 @@ pub(super) fn main() -> anyhow::Result<()> {
                 }
 
                 for command in &config.commands {
-                    if last_pressed != Some(command) && command.is_pressed(&new_keycodes) {
-                        command_tx.send(command).unwrap();
-                        last_pressed = Some(command);
+                    if !command.is_pressed(&new_keycodes) {
+                        continue;
+                    }
+
+                    match &command.ty {
+                        CommandType::Generate(generate) => {
+                            if last_pressed != Some(generate) {
+                                command_tx.send(generate).unwrap();
+                                last_pressed = Some(generate);
+                            }
+                        }
+
+                        CommandType::Cancel => {
+                            cancel_immediately.store(true, Ordering::SeqCst);
+                        }
                     }
                 }
 
@@ -79,6 +94,7 @@ pub(super) fn main() -> anyhow::Result<()> {
             PromptMode::Prompt(template) => template.replace("{{PROMPT}}", &prompt),
         };
 
+        let cancel_immediately = cancel_immediately.clone();
         let enigo = enigo.clone();
         model.start_session(Default::default()).infer(
             model.as_ref(),
@@ -92,6 +108,11 @@ pub(super) fn main() -> anyhow::Result<()> {
             },
             &mut Default::default(),
             move |tok| {
+                if cancel_immediately.load(Ordering::SeqCst) {
+                    cancel_immediately.store(false, Ordering::SeqCst);
+                    return Ok(llm::InferenceFeedback::Halt);
+                }
+
                 if let llm::InferenceResponse::InferredToken(t) = tok {
                     enigo.lock().unwrap().key_sequence(&t);
                 }

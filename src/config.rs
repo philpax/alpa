@@ -5,7 +5,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    command::{Command, InputMethod, PromptMode},
+    command::{Command, CommandType, GenerateCommand, InputMethod, PromptMode},
     keycode::Keycode,
 };
 
@@ -44,13 +44,19 @@ pub struct Config {
 }
 
 fn default_commands() -> Vec<Command> {
-    vec![Command::new(
-        [Keycode::LControl, Keycode::Escape],
-        InputMethod::SingleLineUi,
-        PromptMode::Prompt(
-            "SYSTEM: You are a general AI assistant.\nUSER: {{PROMPT}}\nASSISTANT: ".to_string(),
+    vec![
+        Command::new(
+            [Keycode::LControl, Keycode::Escape],
+            CommandType::Generate(GenerateCommand {
+                input: InputMethod::SingleLineUi,
+                mode: PromptMode::Prompt(
+                    "SYSTEM: You are a general AI assistant.\nUSER: {{PROMPT}}\nASSISTANT: "
+                        .to_string(),
+                ),
+            }),
         ),
-    )]
+        Command::new([Keycode::LControl, Keycode::F1], CommandType::Cancel),
+    ]
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -19,22 +19,31 @@ pub enum PromptMode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Command {
-    pub keys: HashSet<Keycode>,
+pub struct GenerateCommand {
     pub input: InputMethod,
     pub mode: PromptMode,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CommandType {
+    #[serde(rename = "generate")]
+    Generate(GenerateCommand),
+    #[serde(rename = "cancel")]
+    Cancel,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Command {
+    pub keys: HashSet<Keycode>,
+    #[serde(rename = "type")]
+    pub ty: CommandType,
+}
+
 impl Command {
-    pub fn new(
-        keys: impl IntoIterator<Item = Keycode>,
-        input: InputMethod,
-        mode: PromptMode,
-    ) -> Self {
+    pub fn new(keys: impl IntoIterator<Item = Keycode>, ty: CommandType) -> Self {
         Self {
             keys: keys.into_iter().collect(),
-            input,
-            mode,
+            ty,
         }
     }
 
