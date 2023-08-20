@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::keycode::Keycode;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum InputMethod {
     #[serde(rename = "single-line-ui")]
     SingleLineUi,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PromptMode {
     #[serde(rename = "autocomplete")]
     Autocomplete,
@@ -18,7 +18,7 @@ pub enum PromptMode {
     Prompt(String),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Command {
     pub keys: HashSet<Keycode>,
     pub input: InputMethod,

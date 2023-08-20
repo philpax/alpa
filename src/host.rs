@@ -4,15 +4,16 @@ use crate::{
     keycode::Keycode,
     window,
 };
-use anyhow::Context;
 use device_query::DeviceQuery;
-use directories::ProjectDirs;
 use enigo::{Enigo, KeyboardControllable};
 use std::{
     collections::HashSet,
     convert::Infallible,
     env, process,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 pub(super) fn main() -> anyhow::Result<()> {
@@ -34,37 +35,74 @@ pub(super) fn main() -> anyhow::Result<()> {
         llm::load_progress_callback_stdout,
     )?;
 
-    let commands = config.commands.clone();
-    let device_state = device_query::DeviceState::new();
-    loop {
-        let new_keycodes =
-            HashSet::from_iter(device_state.get_keys().into_iter().map(Keycode::from));
+    let (command_tx, command_rx) = flume::bounded(1);
+    let is_generating = Arc::new(AtomicBool::new(false));
 
-        for command in &commands {
-            if !command.is_pressed(&new_keycodes) {
-                continue;
+    let _input_thread = std::thread::spawn({
+        let is_generating = is_generating.clone();
+        move || {
+            let device_state = device_query::DeviceState::new();
+            let mut last_pressed = None;
+            loop {
+                let new_keycodes =
+                    HashSet::from_iter(device_state.get_keys().into_iter().map(Keycode::from));
+
+                if !is_generating.load(Ordering::SeqCst) {
+                    last_pressed = None;
+                }
+
+                for command in &config.commands {
+                    if last_pressed != Some(command) && command.is_pressed(&new_keycodes) {
+                        command_tx.send(command).unwrap();
+                        last_pressed = Some(command);
+                    }
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
+        }
+    });
 
-            let prompt = match command.input {
-                InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
-            };
+    while let Ok(command) = command_rx.recv() {
+        is_generating.store(true, Ordering::SeqCst);
 
-            if prompt.is_empty() {
-                continue;
-            }
+        let prompt = match command.input {
+            InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
+        };
 
-            let new_prompt = match &command.mode {
-                PromptMode::Autocomplete => prompt,
-                PromptMode::Prompt(template) => template.replace("{{PROMPT}}", &prompt),
-            };
-
-            infer(model.as_ref(), &new_prompt, |token| {
-                enigo.lock().unwrap().key_sequence(&token);
-            })?;
+        if prompt.is_empty() {
+            continue;
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        let new_prompt = match &command.mode {
+            PromptMode::Autocomplete => prompt,
+            PromptMode::Prompt(template) => template.replace("{{PROMPT}}", &prompt),
+        };
+
+        let enigo = enigo.clone();
+        model.start_session(Default::default()).infer(
+            model.as_ref(),
+            &mut rand::thread_rng(),
+            &llm::InferenceRequest {
+                prompt: (&new_prompt).into(),
+                // TODO: expose sampler
+                parameters: &llm::InferenceParameters::default(),
+                play_back_previous_tokens: false,
+                maximum_token_count: None,
+            },
+            &mut Default::default(),
+            move |tok| {
+                if let llm::InferenceResponse::InferredToken(t) = tok {
+                    enigo.lock().unwrap().key_sequence(&t);
+                }
+                Ok::<_, Infallible>(llm::InferenceFeedback::Continue)
+            },
+        )?;
+
+        is_generating.store(false, Ordering::SeqCst);
     }
+
+    Ok(())
 }
 
 fn ask_for_singleline_input(config: &Config) -> anyhow::Result<String> {
@@ -77,31 +115,4 @@ fn ask_for_singleline_input(config: &Config) -> anyhow::Result<String> {
         .arg(request)
         .output()?;
     Ok(String::from_utf8(output.stdout)?)
-}
-
-fn infer(
-    model: &dyn llm::Model,
-    prompt: &str,
-    mut callback: impl FnMut(String),
-) -> anyhow::Result<()> {
-    model.start_session(Default::default()).infer(
-        model,
-        &mut rand::thread_rng(),
-        &llm::InferenceRequest {
-            prompt: prompt.into(),
-            // TODO: expose sampler
-            parameters: &llm::InferenceParameters::default(),
-            play_back_previous_tokens: false,
-            maximum_token_count: None,
-        },
-        &mut Default::default(),
-        move |tok| {
-            if let llm::InferenceResponse::InferredToken(t) = tok {
-                callback(t);
-            }
-            Ok::<_, Infallible>(llm::InferenceFeedback::Continue)
-        },
-    )?;
-
-    Ok(())
 }
