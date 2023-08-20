@@ -34,13 +34,12 @@ pub(super) fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
 
     let config_path = config_dir.join("config.toml");
-    if !config_path.exists() {
-        std::fs::write(&config_path, toml::to_string_pretty(&Config::default())?)?;
-    }
-
-    let config: Config = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
-
-    let commands = commands();
+    let config: Config = if config_path.exists() {
+        toml::from_str(&std::fs::read_to_string(&config_path)?)?
+    } else {
+        Default::default()
+    };
+    std::fs::write(&config_path, toml::to_string_pretty(&config)?)?;
 
     let model = llm::load_dynamic(
         Some(config.model.architecture()?),
