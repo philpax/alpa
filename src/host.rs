@@ -1,6 +1,11 @@
-use crate::{config::Config, window};
+use crate::{
+    command::{InputMethod, PromptMode},
+    config::Config,
+    keycode::Keycode,
+    window,
+};
 use anyhow::Context;
-use device_query::{DeviceQuery, Keycode};
+use device_query::DeviceQuery;
 use directories::ProjectDirs;
 use enigo::{Enigo, KeyboardControllable};
 use std::{
@@ -9,19 +14,6 @@ use std::{
     env, process,
     sync::{Arc, Mutex},
 };
-
-fn commands() -> Vec<Command> {
-    vec![Command::new(
-        [Keycode::LControl, Keycode::Escape],
-        CommandPromptMethod::SingleLineUi,
-        |model, prompt, enigo| {
-            infer(model, prompt, |output| {
-                enigo.key_sequence(&output);
-            })?;
-            Ok(())
-        },
-    )]
-}
 
 pub(super) fn main() -> anyhow::Result<()> {
     let enigo = Arc::new(Mutex::new(Enigo::new()));
@@ -55,24 +47,33 @@ pub(super) fn main() -> anyhow::Result<()> {
         llm::load_progress_callback_stdout,
     )?;
 
+    let commands = config.commands.clone();
     let device_state = device_query::DeviceState::new();
     loop {
-        let new_keycodes = HashSet::from_iter(device_state.get_keys());
+        let new_keycodes =
+            HashSet::from_iter(device_state.get_keys().into_iter().map(Keycode::from));
 
         for command in &commands {
             if !command.is_pressed(&new_keycodes) {
                 continue;
             }
 
-            let prompt = match command.prompt_method {
-                CommandPromptMethod::SingleLineUi => ask_for_singleline_input(&config)?,
+            let prompt = match command.input {
+                InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
             };
 
             if prompt.is_empty() {
                 continue;
             }
 
-            (command.command)(model.as_ref(), &prompt, &mut enigo.lock().unwrap())?;
+            let new_prompt = match &command.mode {
+                PromptMode::Autocomplete => prompt,
+                PromptMode::Prompt(template) => template.replace("{{PROMPT}}", &prompt),
+            };
+
+            infer(model.as_ref(), &new_prompt, |token| {
+                enigo.lock().unwrap().key_sequence(&token);
+            })?;
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -116,40 +117,4 @@ fn infer(
     )?;
 
     Ok(())
-}
-
-#[derive(Clone)]
-enum CommandPromptMethod {
-    SingleLineUi,
-}
-
-#[derive(Clone)]
-struct Command {
-    keys: HashSet<Keycode>,
-    prompt_method: CommandPromptMethod,
-    // can't extract out the contents of the function type signature because you can't
-    // use type aliases with Fn
-    #[allow(clippy::type_complexity)]
-    command: Arc<dyn Fn(&dyn llm::Model, &str, &mut Enigo) -> anyhow::Result<()> + Send + Sync>,
-}
-
-impl Command {
-    fn new(
-        keys: impl IntoIterator<Item = Keycode>,
-        prompt_method: CommandPromptMethod,
-        command: impl Fn(&dyn llm::Model, &str, &mut Enigo) -> anyhow::Result<()>
-            + Send
-            + Sync
-            + 'static,
-    ) -> Self {
-        Self {
-            keys: keys.into_iter().collect(),
-            prompt_method,
-            command: Arc::new(command),
-        }
-    }
-
-    fn is_pressed(&self, keycodes: &HashSet<Keycode>) -> bool {
-        keycodes.is_superset(&self.keys)
-    }
 }

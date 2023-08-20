@@ -2,7 +2,12 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+use crate::{
+    command::{Command, InputMethod, PromptMode},
+    keycode::Keycode,
+};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Config {
     #[serde(default)]
     pub window: Window,
@@ -10,6 +15,18 @@ pub struct Config {
     pub general: General,
     #[serde(default)]
     pub model: Model,
+    #[serde(default = "default_commands")]
+    pub commands: Vec<Command>,
+}
+
+fn default_commands() -> Vec<Command> {
+    vec![Command::new(
+        [Keycode::LControl, Keycode::Escape],
+        InputMethod::SingleLineUi,
+        PromptMode::Prompt(
+            "SYSTEM: You are a general AI assistant.\nUSER: {{PROMPT}}\nASSISTANT: ".to_string(),
+        ),
+    )]
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,5 +1,7 @@
+mod command;
 mod config;
 mod host;
+mod keycode;
 mod window;
 
 #[tokio::main]
