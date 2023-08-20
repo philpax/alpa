@@ -1,6 +1,6 @@
 use crate::{
     command::{InputMethod, PromptMode},
-    config::Config,
+    config::{self, Config},
     keycode::Keycode,
     window,
 };
@@ -18,20 +18,7 @@ use std::{
 pub(super) fn main() -> anyhow::Result<()> {
     let enigo = Arc::new(Mutex::new(Enigo::new()));
 
-    // Get the config.
-    let config_dir = ProjectDirs::from("org", "philpax", "alpa")
-        .context("couldn't get project dir")?
-        .config_dir()
-        .to_owned();
-    std::fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
-
-    let config_path = config_dir.join("config.toml");
-    let config: Config = if config_path.exists() {
-        toml::from_str(&std::fs::read_to_string(&config_path)?)?
-    } else {
-        Default::default()
-    };
-    std::fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+    let config = config::init()?;
 
     let model = llm::load_dynamic(
         Some(config.model.architecture()?),

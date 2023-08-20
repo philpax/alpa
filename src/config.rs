@@ -1,11 +1,35 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::OnceLock};
 
+use anyhow::Context;
+use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     command::{Command, InputMethod, PromptMode},
     keycode::Keycode,
 };
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+pub fn init() -> anyhow::Result<&'static Config> {
+    assert!(CONFIG.get().is_none());
+
+    // Get the config.
+    let config_dir = ProjectDirs::from("org", "philpax", "alpa")
+        .context("couldn't get project dir")?
+        .config_dir()
+        .to_owned();
+    std::fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
+
+    let config_path = config_dir.join("config.toml");
+    let config = if config_path.exists() {
+        toml::from_str::<Config>(&std::fs::read_to_string(&config_path)?)?
+    } else {
+        Default::default()
+    };
+    std::fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+
+    Ok(CONFIG.get_or_init(|| config))
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Config {
