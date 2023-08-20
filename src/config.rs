@@ -55,7 +55,7 @@ fn default_commands() -> Vec<Command> {
                 ),
             }),
         ),
-        Command::new([Keycode::LControl, Keycode::F1], CommandType::Cancel),
+        Command::new([Keycode::Escape], CommandType::Cancel),
     ]
 }
 

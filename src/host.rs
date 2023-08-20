@@ -54,11 +54,16 @@ pub(super) fn main() -> anyhow::Result<()> {
                     last_pressed = None;
                 }
 
+                let mut commands_to_process = vec![];
                 for command in &config.commands {
-                    if !command.is_pressed(&new_keycodes) {
+                    if command.is_pressed(&new_keycodes) {
+                        commands_to_process.push(command);
                         continue;
                     }
+                }
+                commands_to_process.sort_by_key(|cmd| -(cmd.keys.len() as isize));
 
+                if let Some(command) = commands_to_process.first() {
                     match &command.ty {
                         CommandType::Generate(generate) => {
                             if last_pressed != Some(generate) {
