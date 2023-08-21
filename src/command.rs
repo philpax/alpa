@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::keycode::Keycode;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ClipboardLoad {
     Line,
 }

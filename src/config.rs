@@ -46,7 +46,7 @@ pub struct Config {
 fn default_commands() -> Vec<Command> {
     vec![
         Command::new(
-            [Keycode::LControl, Keycode::Escape],
+            [Keycode::LControl, Keycode::Apostrophe],
             CommandType::Generate(GenerateCommand {
                 input: InputMethod::SingleLineUi,
                 mode: PromptMode::Prompt(
