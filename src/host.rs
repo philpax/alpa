@@ -122,8 +122,10 @@ pub(super) fn main() -> anyhow::Result<()> {
                             // Deselect
                             enigo.key_click(Key::RightArrow);
                         } else {
-                            // Make the selection
+                            // Make the selection, hitting home twice to ensure we grab the whole line
                             enigo.key_down(Key::LShift);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            enigo.key_click(Key::Home);
                             std::thread::sleep(std::time::Duration::from_millis(5));
                             enigo.key_click(Key::Home);
                             std::thread::sleep(std::time::Duration::from_millis(5));
