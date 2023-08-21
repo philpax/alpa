@@ -100,6 +100,12 @@ pub(super) fn main() -> anyhow::Result<()> {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
 
+                let old_clipboard = if clipboard.load.is_some() {
+                    arboard.get_text().ok()
+                } else {
+                    None
+                };
+
                 match clipboard.load {
                     Some(ClipboardLoad::Line) => {
                         let mut enigo = enigo.lock().unwrap();
@@ -150,7 +156,11 @@ pub(super) fn main() -> anyhow::Result<()> {
                     None => {}
                 }
 
-                arboard.get_text()?
+                let text = arboard.get_text()?;
+                if let Some(old_clipboard) = old_clipboard {
+                    arboard.set_text(old_clipboard)?;
+                }
+                text
             }
         };
 
