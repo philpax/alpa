@@ -102,10 +102,10 @@ pub(super) fn main() -> anyhow::Result<()> {
 
                 match clipboard.load {
                     Some(ClipboardLoad::Line) => {
+                        let mut enigo = enigo.lock().unwrap();
                         if cfg!(target_os = "macos") {
                             // TODO: fix this. It doesn't seem to actually work - Meta
                             // behaves like LCtrl?
-                            let mut enigo = enigo.lock().unwrap();
 
                             // Make the selection
                             enigo.key_down(Key::Meta);
@@ -122,13 +122,30 @@ pub(super) fn main() -> anyhow::Result<()> {
                             // Deselect
                             enigo.key_click(Key::RightArrow);
                         } else {
-                            unimplemented!("Make this work on other platforms!")
+                            // Make the selection
+                            enigo.key_down(Key::LShift);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            enigo.key_click(Key::Home);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            enigo.key_up(Key::LShift);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+
+                            // Copy it
+                            enigo.key_down(Key::LControl);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            enigo.key_click(Key::C);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            enigo.key_up(Key::LControl);
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+
+                            // Deselect
+                            enigo.key_click(Key::RightArrow);
                         }
                     }
                     None => {}
                 }
 
-                dbg!(arboard.get_text()?)
+                arboard.get_text()?
             }
         };
 
