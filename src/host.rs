@@ -39,10 +39,12 @@ pub(super) fn main() -> anyhow::Result<()> {
     let (command_tx, command_rx) = flume::bounded(1);
     let is_generating = Arc::new(AtomicBool::new(false));
     let cancel_immediately = Arc::new(AtomicBool::new(false));
+    let any_keys_pressed = Arc::new(AtomicBool::new(false));
 
     let _input_thread = std::thread::spawn({
         let is_generating = is_generating.clone();
         let cancel_immediately = cancel_immediately.clone();
+        let any_keys_pressed = any_keys_pressed.clone();
         move || {
             let device_state = device_query::DeviceState::new();
             // Use to prevent the same command being sent multiple times during a generation attempt
@@ -50,6 +52,7 @@ pub(super) fn main() -> anyhow::Result<()> {
             loop {
                 let new_keycodes =
                     HashSet::from_iter(device_state.get_keys().into_iter().map(Keycode::from));
+                any_keys_pressed.store(!new_keycodes.is_empty(), Ordering::SeqCst);
 
                 if !is_generating.load(Ordering::SeqCst) {
                     last_pressed = None;
@@ -84,12 +87,19 @@ pub(super) fn main() -> anyhow::Result<()> {
         }
     });
 
+    println!("Ready to go!");
+
     while let Ok(command) = command_rx.recv() {
         is_generating.store(true, Ordering::SeqCst);
 
         let prompt = match &command.input {
             InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
             InputMethod::Clipboard(clipboard) => {
+                // HACK: wait for all keys to be released
+                while any_keys_pressed.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+
                 match clipboard.load {
                     Some(ClipboardLoad::Line) => {
                         if cfg!(target_os = "macos") {
