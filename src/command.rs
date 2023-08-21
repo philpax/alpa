@@ -8,6 +8,8 @@ use crate::keycode::Keycode;
 pub enum InputMethod {
     #[serde(rename = "single-line-ui")]
     SingleLineUi,
+    #[serde(rename = "clipboard")]
+    Clipboard,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -18,6 +18,7 @@ use std::{
 
 pub(super) fn main() -> anyhow::Result<()> {
     let enigo = Arc::new(Mutex::new(Enigo::new()));
+    let mut arboard = arboard::Clipboard::new()?;
 
     let config = config::init()?;
 
@@ -88,6 +89,7 @@ pub(super) fn main() -> anyhow::Result<()> {
 
         let prompt = match command.input {
             InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
+            InputMethod::Clipboard => arboard.get_text()?,
         };
 
         if prompt.is_empty() {
