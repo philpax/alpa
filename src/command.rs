@@ -5,11 +5,22 @@ use serde::{Deserialize, Serialize};
 use crate::keycode::Keycode;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ClipboardLoad {
+    Line,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Clipboard {
+    #[serde(default)]
+    pub load: Option<ClipboardLoad>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum InputMethod {
     #[serde(rename = "single-line-ui")]
     SingleLineUi,
     #[serde(rename = "clipboard")]
-    Clipboard,
+    Clipboard(Clipboard),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

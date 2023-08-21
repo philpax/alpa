@@ -1,11 +1,11 @@
 use crate::{
-    command::{CommandType, InputMethod, NewlineBehavior, PromptMode},
+    command::{ClipboardLoad, CommandType, InputMethod, NewlineBehavior, PromptMode},
     config::{self, Config},
     keycode::Keycode,
     window,
 };
 use device_query::DeviceQuery;
-use enigo::{Enigo, KeyboardControllable};
+use enigo::{Enigo, Key, KeyboardControllable};
 use std::{
     collections::HashSet,
     convert::Infallible,
@@ -87,9 +87,39 @@ pub(super) fn main() -> anyhow::Result<()> {
     while let Ok(command) = command_rx.recv() {
         is_generating.store(true, Ordering::SeqCst);
 
-        let prompt = match command.input {
+        let prompt = match &command.input {
             InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
-            InputMethod::Clipboard => arboard.get_text()?,
+            InputMethod::Clipboard(clipboard) => {
+                match clipboard.load {
+                    Some(ClipboardLoad::Line) => {
+                        if cfg!(target_os = "macos") {
+                            // TODO: fix this. It doesn't seem to actually work - Meta
+                            // behaves like LCtrl?
+                            let mut enigo = enigo.lock().unwrap();
+
+                            // Make the selection
+                            enigo.key_down(Key::Meta);
+                            enigo.key_down(Key::LShift);
+                            enigo.key_click(Key::LeftArrow);
+                            enigo.key_up(Key::LShift);
+                            enigo.key_up(Key::Meta);
+
+                            // Copy it
+                            enigo.key_down(Key::Meta);
+                            enigo.key_sequence("C");
+                            enigo.key_up(Key::Meta);
+
+                            // Deselect
+                            enigo.key_click(Key::RightArrow);
+                        } else {
+                            unimplemented!("Make this work on other platforms!")
+                        }
+                    }
+                    None => {}
+                }
+
+                dbg!(arboard.get_text()?)
+            }
         };
 
         if prompt.is_empty() {
@@ -132,12 +162,12 @@ pub(super) fn main() -> anyhow::Result<()> {
                                     feedback = llm::InferenceFeedback::Halt;
                                 }
                                 NewlineBehavior::Enter => {
-                                    enigo.key_click(enigo::Key::Return);
+                                    enigo.key_click(Key::Return);
                                 }
                                 NewlineBehavior::ShiftEnter => {
-                                    enigo.key_down(enigo::Key::Shift);
-                                    enigo.key_click(enigo::Key::Return);
-                                    enigo.key_up(enigo::Key::Shift);
+                                    enigo.key_down(Key::Shift);
+                                    enigo.key_click(Key::Return);
+                                    enigo.key_up(Key::Shift);
                                 }
                             }
                         }
