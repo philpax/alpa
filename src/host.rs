@@ -93,7 +93,7 @@ pub(super) fn main() -> anyhow::Result<()> {
         is_generating.store(true, Ordering::SeqCst);
 
         let prompt = match &command.input {
-            InputMethod::SingleLineUi => ask_for_singleline_input(&config)?,
+            InputMethod::SingleLineUi => ask_for_singleline_input(config)?,
             InputMethod::Clipboard(clipboard) => {
                 // HACK: wait for all keys to be released
                 while any_keys_pressed.load(Ordering::SeqCst) {
@@ -106,6 +106,7 @@ pub(super) fn main() -> anyhow::Result<()> {
                     None
                 };
 
+                #[allow(clippy::single_match)]
                 match clipboard.load {
                     Some(ClipboardLoad::Line) => {
                         let mut enigo = enigo.lock().unwrap();
@@ -215,7 +216,7 @@ pub(super) fn main() -> anyhow::Result<()> {
                         }
 
                         first = false;
-                        enigo.key_sequence(&line);
+                        enigo.key_sequence(line);
 
                         if matches!(feedback, llm::InferenceFeedback::Halt) {
                             break;
