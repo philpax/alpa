@@ -1,5 +1,5 @@
 use crate::{
-    command::{CommandType, InputMethod, PromptMode},
+    command::{CommandType, InputMethod, NewlineBehavior, PromptMode},
     config::{self, Config},
     keycode::Keycode,
     window,
@@ -120,10 +120,37 @@ pub(super) fn main() -> anyhow::Result<()> {
                     return Ok(llm::InferenceFeedback::Halt);
                 }
 
+                let mut feedback = llm::InferenceFeedback::Continue;
+
                 if let llm::InferenceResponse::InferredToken(t) = tok {
-                    enigo.lock().unwrap().key_sequence(&t);
+                    let mut enigo = enigo.lock().unwrap();
+                    let mut first = true;
+                    for line in t.lines() {
+                        if !first || line.is_empty() {
+                            match command.newline {
+                                NewlineBehavior::Stop => {
+                                    feedback = llm::InferenceFeedback::Halt;
+                                }
+                                NewlineBehavior::Enter => {
+                                    enigo.key_click(enigo::Key::Return);
+                                }
+                                NewlineBehavior::ShiftEnter => {
+                                    enigo.key_down(enigo::Key::Shift);
+                                    enigo.key_click(enigo::Key::Return);
+                                    enigo.key_up(enigo::Key::Shift);
+                                }
+                            }
+                        }
+
+                        first = false;
+                        enigo.key_sequence(&line);
+
+                        if matches!(feedback, llm::InferenceFeedback::Halt) {
+                            break;
+                        }
+                    }
                 }
-                Ok::<_, Infallible>(llm::InferenceFeedback::Continue)
+                Ok::<_, Infallible>(feedback)
             },
         )?;
 

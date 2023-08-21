@@ -5,7 +5,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    command::{Command, CommandType, GenerateCommand, InputMethod, PromptMode},
+    command::{Command, CommandType, GenerateCommand, InputMethod, NewlineBehavior, PromptMode},
     keycode::Keycode,
 };
 
@@ -53,6 +53,7 @@ fn default_commands() -> Vec<Command> {
                     "SYSTEM: You are a general AI assistant.\nUSER: {{PROMPT}}\nASSISTANT: "
                         .to_string(),
                 ),
+                newline: NewlineBehavior::Enter,
             }),
         ),
         Command::new([Keycode::Escape], CommandType::Cancel),

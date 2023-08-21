@@ -21,9 +21,20 @@ pub enum PromptMode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NewlineBehavior {
+    #[serde(rename = "stop")]
+    Stop,
+    #[serde(rename = "enter")]
+    Enter,
+    #[serde(rename = "shift-enter")]
+    ShiftEnter,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenerateCommand {
     pub input: InputMethod,
     pub mode: PromptMode,
+    pub newline: NewlineBehavior,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
