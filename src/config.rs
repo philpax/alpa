@@ -9,18 +9,24 @@ use crate::{
     keycode::Keycode,
 };
 
+const USE_WORKING_DIR: bool = true;
+
 static CONFIG: OnceLock<Config> = OnceLock::new();
 pub fn init() -> anyhow::Result<&'static Config> {
     assert!(CONFIG.get().is_none());
 
-    // Get the config.
-    let config_dir = ProjectDirs::from("org", "philpax", "alpa")
-        .context("couldn't get project dir")?
-        .config_dir()
-        .to_owned();
-    std::fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
+    let config_path = if USE_WORKING_DIR {
+        PathBuf::from("config.toml")
+    } else {
+        // Get the config.
+        let config_dir = ProjectDirs::from("org", "philpax", "alpa")
+            .context("couldn't get project dir")?
+            .config_dir()
+            .to_owned();
+        std::fs::create_dir_all(&config_dir).context("couldn't create config dir")?;
 
-    let config_path = config_dir.join("config.toml");
+        config_dir.join("config.toml")
+    };
     let config = if config_path.exists() {
         toml::from_str::<Config>(&std::fs::read_to_string(&config_path)?)?
     } else {
