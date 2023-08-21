@@ -103,7 +103,8 @@ pub(super) fn main() -> anyhow::Result<()> {
                 match clipboard.load {
                     Some(ClipboardLoad::Line) => {
                         let mut enigo = enigo.lock().unwrap();
-                        if cfg!(target_os = "macos") {
+                        #[cfg(target_os = "macos")]
+                        {
                             // TODO: fix this. It doesn't seem to actually work - Meta
                             // behaves like LCtrl?
 
@@ -121,7 +122,9 @@ pub(super) fn main() -> anyhow::Result<()> {
 
                             // Deselect
                             enigo.key_click(Key::RightArrow);
-                        } else {
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
                             // Make the selection, hitting home twice to ensure we grab the whole line
                             enigo.key_down(Key::LShift);
                             std::thread::sleep(std::time::Duration::from_millis(5));
