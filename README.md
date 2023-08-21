@@ -1,8 +1,6 @@
 # alpa
 
-An Alpaca-powered knowledge tool.
-
-For the model, see [alpaca.cpp](https://github.com/antimatter15/alpaca.cpp).
+A basic LLM-powered autocomplete for your OS.
 
 ## Resources
 
